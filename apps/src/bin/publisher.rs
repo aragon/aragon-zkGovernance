@@ -1,14 +1,21 @@
 use std::str::FromStr;
 
-use alloy::{network::EthereumWallet, providers::ProviderBuilder, rpc::types::TransactionRequest};
+use alloy::{
+    network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner,
+    transports::http::reqwest::Url,
+};
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_sol_types::{sol, SolCall};
-use anyhow::Result;
-use apps::{HostContext, TxSender};
+use alloy_sol_types::sol;
+use anyhow::{ensure, Context, Result};
+use apps::HostContext;
 use aragon_zk_voting_protocol_methods::VOTING_PROTOCOL_ELF;
 use clap::Parser;
 use risc0_ethereum_contracts::groth16::encode;
-use risc0_steel::{config::ETH_SEPOLIA_CHAIN_SPEC, ethereum::EthEvmEnv, Contract};
+use risc0_steel::{
+    ethereum::{EthEvmEnv, ETH_SEPOLIA_CHAIN_SPEC},
+    host::BlockNumberOrTag,
+    Contract,
+};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, VerifierContext};
 use tracing_subscriber::EnvFilter;
 
@@ -23,7 +30,10 @@ sol! {
     }
 }
 
-sol!("../contracts/IMajorityVoting.sol");
+alloy::sol!(
+    #[sol(rpc, all_derives)]
+    "../contracts/IMajorityVoting.sol"
+);
 
 /// Arguments of the publisher CLI.
 #[derive(Parser, Debug)]
@@ -35,7 +45,7 @@ struct Args {
 
     /// Ethereum Node endpoint.
     #[clap(long, env)]
-    eth_wallet_private_key: String,
+    eth_wallet_private_key: PrivateKeySigner,
 
     /// Ethereum Node endpoint.
     #[clap(long, env)]
@@ -87,7 +97,8 @@ fn to_hex_string(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{:02x}", byte)).collect()
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize tracing. In order to view logs, run `RUST_LOG=info cargo run`
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -96,21 +107,36 @@ fn main() -> Result<()> {
     // parse the command line arguments
     let args = Args::parse();
 
+    // Create an alloy provider for that private key and URL.
+    let wallet = EthereumWallet::from(args.eth_wallet_private_key);
+    let provider = ProviderBuilder::new()
+        .with_recommended_fillers()
+        .wallet(wallet)
+        .on_http(Url::from_str(&args.rpc_url).unwrap());
+
     // Create an EVM environment from an RPC endpoint and a block number. If no block number is
     // provided, the latest block is used.
-    let mut env = EthEvmEnv::from_rpc(&args.rpc_url, args.block_number)?;
+    // Define the type for H
+    let mut env = EthEvmEnv::builder()
+        .provider(provider.clone())
+        .block_number_or_tag(BlockNumberOrTag::Number(args.block_number.unwrap()))
+        .build()
+        .await?;
+
     //  The `with_chain_spec` method is used to specify the chain configuration.
     env = env.with_chain_spec(&ETH_SEPOLIA_CHAIN_SPEC);
 
     // Making the preflighs. This step is mandatory
     let config_call = ConfigContract::getVotingProtocolConfigCall {};
     let mut config_contract = Contract::preflight(args.config_contract, &mut env);
-    let config_returns = config_contract.call_builder(&config_call).call()?;
+    let config_returns = config_contract.call_builder(&config_call).call().await?;
     println!("Config string: {:?}", config_returns._0);
 
     let config =
         serde_json::from_str::<apps::RiscVotingProtocolConfig>(&config_returns._0).unwrap();
+
     let mut strategies_context = HostContext::default(&mut env);
+
     // Get the total voting power of the voter across all assets.
     let total_voting_power: U256 = config
         .assets
@@ -145,7 +171,7 @@ fn main() -> Result<()> {
     println!("Total voting power: {}", total_voting_power);
     println!("proving...");
 
-    let view_call_input = env.into_input()?;
+    let view_call_input = env.into_input().await?;
     let env = ExecutorEnv::builder()
         .write(&view_call_input)?
         .write(&args.voter_signature)?
@@ -168,13 +194,6 @@ fn main() -> Result<()> {
         .receipt;
     println!("proving...done");
 
-    // Create an alloy provider for that private key and URL.
-    let wallet = EthereumWallet::from(args.eth_wallet_private_key);
-    let provider = ProviderBuilder::new()
-        .with_recommended_fillers()
-        .wallet(wallet)
-        .on_http(args.rpc_url);
-
     // Encode the groth16 seal with the selector
     let seal = encode(receipt.inner.groth16()?.seal.clone())?;
     let journal_bytes = receipt.journal.bytes.as_slice();
@@ -183,17 +202,17 @@ fn main() -> Result<()> {
     println!("journalData: {:?}", to_hex_string(journal_bytes));
     println!("seal: {:?}", to_hex_string(seal_bytes));
 
-    // Encode the function call for `Plugin.vote(journal, seal)`.
-    let calldata = IMajorityVoting::voteCall {
-        journalData: receipt.journal.bytes.into(),
-        seal: seal.into(),
-    };
+    let contract = IMajorityVoting::new(args.config_contract, &provider);
+    let call_builder = contract.vote(receipt.journal.bytes.into(), seal.into());
+    log::debug!("Send {} {}", contract.address(), call_builder.calldata());
+    let pending_tx = call_builder.send().await?;
+    let tx_hash = *pending_tx.tx_hash();
+    let receipt = pending_tx
+        .get_receipt()
+        .await
+        .with_context(|| format!("transaction did not confirm: {}", tx_hash))?;
 
-    // Send the calldata to Ethereum.
-    println!("sending tx...");
-    let tx = TransactionRequest::default()
-        .with_to(&args.config_contract)
-        .with_call(&calldata);
+    ensure!(receipt.status(), "transaction failed: {}", tx_hash);
 
     println!("sending tx...done");
 

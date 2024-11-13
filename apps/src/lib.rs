@@ -27,13 +27,15 @@ use risc0_steel::{
         db::{AlloyDb, ProofDb},
         HostCommit,
     },
-    EvmBlockHeader,
+    EvmBlockHeader, EvmEnv,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use voting_power_strategies::*;
 
+// type HostEvmEnv<D, H, C> = EvmEnv<ProofDb<D>, H, HostCommit<C>>;
 type EthHostEvmEnv<T, N, P, C> = EthEvmEnv<ProofDb<AlloyDb<T, N, P>>, HostCommit<C>>;
+
 /// Wrapper for the commit on the host.
 
 pub struct HostContext<'a, T, N, P, H>

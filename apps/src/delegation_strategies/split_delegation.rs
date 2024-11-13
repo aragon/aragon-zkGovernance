@@ -6,7 +6,6 @@ use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::sol;
 use anyhow::{bail, Result};
 use async_trait::async_trait;
-use futures::future::join_all;
 use risc0_steel::{Contract, EvmBlockHeader};
 
 sol! {
@@ -50,27 +49,22 @@ where
         println!("Input Delegations: {:?}", delegations);
 
         let context = asset.contract.clone();
+        let mut account_delegates = Vec::new();
 
-        // Use `join_all` to concurrently process delegations without using `async move`
-        let futures: Vec<_> = delegations
-            .into_iter()
-            .map(|potential_delegate| {
-                let context_clone = context.to_string();
-                let asset_contract_clone = asset.delegation.contract.clone();
+        for potential_delegate in delegations {
+            let context_clone = context.to_string();
+            let asset_contract_clone = asset.delegation.contract.clone();
+            let result = process_delegate(
+                env,
+                asset_contract_clone,
+                context_clone,
+                potential_delegate,
+                account,
+            )
+            .await;
 
-                // Now perform the logic in a separate async function call
-                process_delegate(
-                    env,
-                    asset_contract_clone,
-                    context_clone,
-                    potential_delegate,
-                    account,
-                )
-            })
-            .collect();
-
-        // Await the futures
-        let account_delegates: Vec<Option<Delegation>> = join_all(futures).await;
+            account_delegates.push(result);
+        }
 
         // Check if any results are `None`
         if account_delegates.iter().any(|d| d.is_none()) {

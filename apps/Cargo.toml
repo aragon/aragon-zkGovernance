@@ -5,7 +5,7 @@ edition = { workspace = true }
 
 [dependencies]
 async-trait = "0.1"
-alloy = { version = "0.4" }
+alloy = { version = "^0.4", features = ["full"] }
 alloy-primitives = { workspace = true }
 alloy-sol-types = { workspace = true }
 anyhow = { workspace = true }
