@@ -27,13 +27,12 @@ use risc0_steel::{
         db::{AlloyDb, ProofDb},
         HostCommit,
     },
-    EvmBlockHeader, EvmEnv,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use voting_power_strategies::*;
 
-// type HostEvmEnv<D, H, C> = EvmEnv<ProofDb<D>, H, HostCommit<C>>;
+//type HostEvmEnv<D, H, C> = EvmEnv<ProofDb<D>, H, HostCommit<C>>;
 type EthHostEvmEnv<T, N, P, C> = EthEvmEnv<ProofDb<AlloyDb<T, N, P>>, HostCommit<C>>;
 
 /// Wrapper for the commit on the host.
@@ -43,7 +42,7 @@ where
     T: Transport + Clone,
     N: Network,
     P: Provider<T, N> + Send + 'static,
-    H: EvmBlockHeader + Clone + Send + 'static,
+    H: Clone + Send + 'static,
 {
     voting_power_strategies: HashMap<String, Box<dyn VotingPowerStrategy<T, N, P, H>>>,
     delegation_strategies: HashMap<String, Box<dyn DelegationStrategy<T, N, P, H>>>,
@@ -56,7 +55,7 @@ where
     T: Transport + Clone + Send + Sync,
     N: Network + Send + Sync,
     P: Provider<T, N> + Send + Sync + 'static,
-    H: EvmBlockHeader + Clone + Send + Sync + 'static,
+    H: Clone + Send + Sync + 'static,
 {
     pub fn default(env: &'a mut EthHostEvmEnv<T, N, P, H>) -> Self {
         let mut voting_power_strategies: HashMap<String, Box<dyn VotingPowerStrategy<T, N, P, H>>> =

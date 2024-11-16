@@ -9,7 +9,7 @@ where
     T: Transport + Clone,
     N: Network,
     P: Provider<T, N> + Send + 'static,
-    H: risc0_steel::EvmBlockHeader + Send + 'static,
+    H: Send + 'static,
 {
     async fn process(
         &self,

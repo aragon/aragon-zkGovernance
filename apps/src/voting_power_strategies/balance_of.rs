@@ -4,7 +4,7 @@ use alloy::{network::Network, providers::Provider, transports::Transport};
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::sol;
 use async_trait::async_trait;
-use risc0_steel::{Contract, EvmBlockHeader};
+use risc0_steel::Contract;
 
 sol! {
     /// ERC-20 balance function signature.
@@ -22,7 +22,7 @@ where
     T: Transport + Clone,
     N: Network,
     P: Provider<T, N> + Send + 'static,
-    H: EvmBlockHeader + Send + 'static,
+    H: Send + 'static,
 {
     async fn process(
         &self,

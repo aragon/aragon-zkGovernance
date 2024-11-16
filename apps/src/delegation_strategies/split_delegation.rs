@@ -6,7 +6,7 @@ use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::sol;
 use anyhow::{bail, Result};
 use async_trait::async_trait;
-use risc0_steel::{Contract, EvmBlockHeader};
+use risc0_steel::Contract;
 
 sol! {
     /// ERC-20 balance function signature.
@@ -27,7 +27,7 @@ where
     T: Transport + Clone + Send + Sync,
     N: Network + Send + Sync,
     P: Provider<T, N> + Send + Sync + 'static,
-    H: EvmBlockHeader + Clone + Send + Sync + 'static,
+    H: Clone + Send + Sync + 'static,
 {
     async fn process(
         &self,
@@ -87,7 +87,7 @@ where
     T: Transport + Clone + Send + Sync,
     N: Network + Send + Sync,
     P: Provider<T, N> + Send + Sync + 'static,
-    H: EvmBlockHeader + Clone + Send + Sync + 'static,
+    H: Clone + Send + Sync + 'static,
 {
     // Create the delegations contract
     let mut delegations_contract = Contract::preflight(asset_contract, env);

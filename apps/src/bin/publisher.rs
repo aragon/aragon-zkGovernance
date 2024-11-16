@@ -13,7 +13,6 @@ use clap::Parser;
 use risc0_ethereum_contracts::groth16::encode;
 use risc0_steel::{
     ethereum::{EthEvmEnv, ETH_SEPOLIA_CHAIN_SPEC},
-    host::BlockNumberOrTag,
     Contract,
 };
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, VerifierContext};
@@ -118,8 +117,9 @@ async fn main() -> Result<()> {
     // provided, the latest block is used.
     // Define the type for H
     let mut env = EthEvmEnv::builder()
-        .provider(provider.clone())
-        .block_number_or_tag(BlockNumberOrTag::Number(args.block_number.unwrap()))
+        .rpc(Url::from_str(&args.rpc_url).unwrap())
+        // .provider(provider.clone())
+        .block_number(args.block_number.unwrap())
         .build()
         .await?;
 
@@ -138,35 +138,39 @@ async fn main() -> Result<()> {
     let mut strategies_context = HostContext::default(&mut env);
 
     // Get the total voting power of the voter across all assets.
-    let total_voting_power: U256 = config
-        .assets
-        .iter()
-        .map(|asset| {
-            // Get the accounts whost voting power is delegated to the voter.
-            let delegations = strategies_context.process_delegation_strategy(
+    let mut total_voting_power = U256::from(0);
+
+    for asset in &config.assets {
+        let delegations_result = strategies_context
+            .process_delegation_strategy(
                 args.voter,
                 asset,
                 Bytes::from_str(args.additional_delegation_data.as_str()).unwrap(),
-            );
-            if delegations.is_err() {
-                println!("Delegations given are not correct");
-                assert!(false);
-            }
-            delegations
-                .unwrap()
-                .iter()
-                .fold(U256::from(0), |acc, delegation| {
-                    (strategies_context.process_voting_power_strategy(
-                        asset.voting_power_strategy.clone(),
-                        delegation.delegate,
-                        asset,
-                    ) / delegation.ratio)
-                        + acc
-                })
+            )
+            .await;
 
-            // assert_eq!(asset.chain_id, destination_chain_id.chain_id());
-        })
-        .sum::<U256>();
+        if delegations_result.is_err() {
+            println!("Delegations given are not correct");
+            assert!(false);
+        }
+
+        let delegations = delegations_result.unwrap();
+        let mut asset_voting_power = U256::from(0);
+
+        for delegation in &delegations {
+            let strategy = asset.voting_power_strategy.clone();
+            let delegate = delegation.delegate;
+            let ratio = delegation.ratio;
+
+            // Call the async function and await the result
+            let voting_power = strategies_context
+                .process_voting_power_strategy(strategy, delegate, asset)
+                .await;
+
+            asset_voting_power += voting_power / ratio;
+        }
+        total_voting_power += asset_voting_power;
+    }
 
     println!("Total voting power: {}", total_voting_power);
     println!("proving...");
