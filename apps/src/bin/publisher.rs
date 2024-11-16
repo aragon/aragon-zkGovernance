@@ -2,23 +2,23 @@ use std::str::FromStr;
 
 use alloy::{
     network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner,
-    transports::http::reqwest::Url,
+    sol_types::SolValue, transports::http::reqwest::Url,
 };
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_sol_types::sol;
 use anyhow::{ensure, Context, Result};
 use apps::HostContext;
 use aragon_zk_voting_protocol_methods::VOTING_PROTOCOL_ELF;
 use clap::Parser;
-use risc0_ethereum_contracts::groth16::encode;
+use risc0_ethereum_contracts::encode_seal;
 use risc0_steel::{
     ethereum::{EthEvmEnv, ETH_SEPOLIA_CHAIN_SPEC},
-    Contract,
+    Commitment, Contract,
 };
-use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, VerifierContext};
+use risc0_zkvm::{default_prover, ExecutorEnv, ProveInfo, ProverOpts, VerifierContext};
+use tokio::task;
 use tracing_subscriber::EnvFilter;
 
-sol! {
+alloy::sol! {
     /// ERC-20 balance function signature.
     /// This must match the signature in the guest.
     interface IERC20 {
@@ -26,6 +26,14 @@ sol! {
     }
     interface ConfigContract {
         function getVotingProtocolConfig() external view returns (string memory);
+    }
+    struct VotingJournal {
+        Commitment commitment;
+        address configContract;
+        uint256 proposalId;
+        address voter;
+        uint256 balance;
+        uint8 direction;
     }
 }
 
@@ -176,38 +184,48 @@ async fn main() -> Result<()> {
     println!("proving...");
 
     let view_call_input = env.into_input().await?;
-    let env = ExecutorEnv::builder()
-        .write(&view_call_input)?
-        .write(&args.voter_signature)?
-        .write(&args.voter)?
-        .write(&args.dao_address)?
-        .write(&args.proposal_id)?
-        .write(&args.direction)?
-        .write(&args.balance)?
-        .write(&args.config_contract)?
-        .write(&args.additional_delegation_data)?
-        .build()?;
+    let prove_info = task::spawn_blocking(move || -> Result<ProveInfo, anyhow::Error> {
+        let env = ExecutorEnv::builder()
+            .write(&view_call_input)?
+            .write(&args.voter_signature)?
+            .write(&args.voter)?
+            .write(&args.dao_address)?
+            .write(&args.proposal_id)?
+            .write(&args.direction)?
+            .write(&args.balance)?
+            .write(&args.config_contract)?
+            .write(&args.additional_delegation_data)?
+            .build()?;
 
-    let receipt = default_prover()
-        .prove_with_ctx(
+        default_prover().prove_with_ctx(
             env,
             &VerifierContext::default(),
             VOTING_PROTOCOL_ELF,
             &ProverOpts::groth16(),
-        )?
-        .receipt;
+        )
+    })
+    .await?
+    .context("failed to create proof")?;
     println!("proving...done");
 
     // Encode the groth16 seal with the selector
-    let seal = encode(receipt.inner.groth16()?.seal.clone())?;
-    let journal_bytes = receipt.journal.bytes.as_slice();
+    let receipt = prove_info.receipt;
+    let journal = &receipt.journal.bytes;
+
+    // Decode and log the commitment
+    let journal = VotingJournal::abi_decode(journal, true).context("invalid journal")?;
+    // log::debug!("Steel commitment: {:?}", journal.commitment);
+
+    // ABI encode the seal.
+    let seal = encode_seal(&receipt).context("invalid receipt")?;
     let seal_bytes = seal.as_slice();
 
-    println!("journalData: {:?}", to_hex_string(journal_bytes));
+    // println!("journalData: {:?}", to_hex_string(journal));
     println!("seal: {:?}", to_hex_string(seal_bytes));
 
     let contract = IMajorityVoting::new(args.config_contract, &provider);
     let call_builder = contract.vote(receipt.journal.bytes.into(), seal.into());
+    println!("Send {} {}", contract.address(), call_builder.calldata());
     log::debug!("Send {} {}", contract.address(), call_builder.calldata());
     let pending_tx = call_builder.send().await?;
     let tx_hash = *pending_tx.tx_hash();
