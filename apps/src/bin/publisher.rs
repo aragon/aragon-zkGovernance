@@ -214,7 +214,6 @@ async fn main() -> Result<()> {
 
     // Decode and log the commitment
     let journal = VotingJournal::abi_decode(journal, true).context("invalid journal")?;
-    // log::debug!("Steel commitment: {:?}", journal.commitment);
 
     // ABI encode the seal.
     let seal = encode_seal(&receipt).context("invalid receipt")?;
@@ -222,6 +221,7 @@ async fn main() -> Result<()> {
 
     // println!("journalData: {:?}", to_hex_string(journal));
     println!("seal: {:?}", to_hex_string(seal_bytes));
+    println!("Steel commitment: {:?}", journal.commitment);
 
     let contract = IMajorityVoting::new(args.config_contract, &provider);
     let call_builder = contract.vote(receipt.journal.bytes.into(), seal.into());
