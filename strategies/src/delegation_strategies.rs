@@ -1,7 +1,6 @@
-use crate::Asset;
+use crate::{Asset, GuestEvmEnv};
 use alloy_primitives::{Address, Bytes, U256};
 use anyhow::Result;
-use risc0_steel::EvmEnv;
 use std::iter::FromIterator;
 
 pub struct Delegation {
@@ -25,7 +24,7 @@ impl FromIterator<(Address, U256)> for Delegation {
 pub trait DelegationStrategy {
     fn process(
         &self,
-        env: &EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader>,
+        env: &GuestEvmEnv,
         account: Address,
         asset: &Asset,
         additional_data: Bytes,

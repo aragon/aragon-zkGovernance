@@ -1,20 +1,10 @@
-use crate::Asset;
+use crate::{Asset, GuestEvmEnv};
 use alloy_primitives::{Address, U256};
-use risc0_steel::EvmEnv;
 
 pub trait VotingPowerStrategy {
-    fn process(
-        &self,
-        env: &EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader>,
-        account: Address,
-        asset: &Asset,
-    ) -> U256;
+    fn process(&self, env: &GuestEvmEnv, account: Address, asset: &Asset) -> U256;
 
-    fn get_supply(
-        &self,
-        env: &EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader>,
-        asset: &Asset,
-    ) -> U256;
+    fn get_supply(&self, env: &GuestEvmEnv, asset: &Asset) -> U256;
 }
 
 mod balance_of;

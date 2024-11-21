@@ -1,13 +1,13 @@
 use super::DelegationStrategy;
 use crate::Asset;
 use crate::Delegation;
+use crate::GuestEvmEnv;
+use alloy_primitives::Address;
 use alloy_primitives::Bytes;
 use alloy_primitives::U256;
-use alloy_primitives::{Address, Uint};
 use alloy_sol_types::sol;
 use anyhow::{bail, Result};
-// use risc0_steel::EvmBlockHeader;
-use risc0_steel::{Contract, EvmEnv};
+use risc0_steel::Contract;
 
 sol! {
     /// ERC-20 balance function signature.
@@ -24,7 +24,7 @@ pub struct SplitDelegation;
 impl DelegationStrategy for SplitDelegation {
     fn process(
         &self,
-        env: &EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader>,
+        env: &GuestEvmEnv,
         account: Address,
         asset: &Asset,
         additional_data: Bytes,

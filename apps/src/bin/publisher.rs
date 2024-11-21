@@ -1,17 +1,24 @@
 use std::str::FromStr;
 
+use alloy::{
+    network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner,
+    sol_types::SolValue, transports::http::reqwest::Url,
+};
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_sol_types::{sol, SolCall};
-use anyhow::Result;
-use apps::{HostContext, TxSender};
+use anyhow::{ensure, Context, Result};
+use apps::HostContext;
 use aragon_zk_voting_protocol_methods::VOTING_PROTOCOL_ELF;
 use clap::Parser;
-use risc0_ethereum_contracts::groth16::encode;
-use risc0_steel::{config::ETH_SEPOLIA_CHAIN_SPEC, ethereum::EthEvmEnv, Contract};
-use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, VerifierContext};
+use risc0_ethereum_contracts::encode_seal;
+use risc0_steel::{
+    ethereum::{EthEvmEnv, ETH_SEPOLIA_CHAIN_SPEC},
+    Commitment, Contract,
+};
+use risc0_zkvm::{default_prover, ExecutorEnv, ProveInfo, ProverOpts, VerifierContext};
+use tokio::task;
 use tracing_subscriber::EnvFilter;
 
-sol! {
+alloy::sol! {
     /// ERC-20 balance function signature.
     /// This must match the signature in the guest.
     interface IERC20 {
@@ -20,9 +27,20 @@ sol! {
     interface ConfigContract {
         function getVotingProtocolConfig() external view returns (string memory);
     }
+    struct VotingJournal {
+        Commitment commitment;
+        address configContract;
+        uint256 proposalId;
+        address voter;
+        uint256 balance;
+        uint8 direction;
+    }
 }
 
-sol!("../contracts/IMajorityVoting.sol");
+alloy::sol!(
+    #[sol(rpc, all_derives)]
+    "../contracts/IMajorityVoting.sol"
+);
 
 /// Arguments of the publisher CLI.
 #[derive(Parser, Debug)]
@@ -34,7 +52,7 @@ struct Args {
 
     /// Ethereum Node endpoint.
     #[clap(long, env)]
-    eth_wallet_private_key: String,
+    eth_wallet_private_key: PrivateKeySigner,
 
     /// Ethereum Node endpoint.
     #[clap(long, env)]
@@ -68,7 +86,7 @@ struct Args {
     #[clap(long)]
     balance: U256,
 
-    /// Counter's contract address on Ethereum
+    /// Plugin's contract address on Ethereum
     #[clap(long)]
     config_contract: Address,
 
@@ -86,7 +104,8 @@ fn to_hex_string(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{:02x}", byte)).collect()
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize tracing. In order to view logs, run `RUST_LOG=info cargo run`
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -95,124 +114,128 @@ fn main() -> Result<()> {
     // parse the command line arguments
     let args = Args::parse();
 
+    // Create an alloy provider for that private key and URL.
+    let wallet = EthereumWallet::from(args.eth_wallet_private_key);
+    let provider = ProviderBuilder::new()
+        .with_recommended_fillers()
+        .wallet(wallet)
+        .on_http(Url::from_str(&args.rpc_url).unwrap());
+
     // Create an EVM environment from an RPC endpoint and a block number. If no block number is
     // provided, the latest block is used.
-    let mut env = EthEvmEnv::from_rpc(&args.rpc_url, args.block_number)?;
+    // Define the type for H
+    let mut env = EthEvmEnv::builder()
+        .rpc(Url::from_str(&args.rpc_url).unwrap())
+        // .provider(provider.clone())
+        .block_number(args.block_number.unwrap())
+        .build()
+        .await?;
+
     //  The `with_chain_spec` method is used to specify the chain configuration.
     env = env.with_chain_spec(&ETH_SEPOLIA_CHAIN_SPEC);
 
     // Making the preflighs. This step is mandatory
     let config_call = ConfigContract::getVotingProtocolConfigCall {};
     let mut config_contract = Contract::preflight(args.config_contract, &mut env);
-    let config_returns = config_contract.call_builder(&config_call).call()?;
+    let config_returns = config_contract.call_builder(&config_call).call().await?;
     println!("Config string: {:?}", config_returns._0);
 
     let config =
         serde_json::from_str::<apps::RiscVotingProtocolConfig>(&config_returns._0).unwrap();
+
     let mut strategies_context = HostContext::default(&mut env);
+
     // Get the total voting power of the voter across all assets.
-    let total_voting_power: U256 = config
-        .assets
-        .iter()
-        .map(|asset| {
-            // Get the accounts whost voting power is delegated to the voter.
-            let delegations = strategies_context.process_delegation_strategy(
+    let mut total_voting_power = U256::from(0);
+
+    for asset in &config.assets {
+        let delegations_result = strategies_context
+            .process_delegation_strategy(
                 args.voter,
                 asset,
                 Bytes::from_str(args.additional_delegation_data.as_str()).unwrap(),
-            );
-            if delegations.is_err() {
-                println!("Delegations given are not correct");
-                assert!(false);
-            }
-            delegations
-                .unwrap()
-                .iter()
-                .fold(U256::from(0), |acc, delegation| {
-                    (strategies_context.process_voting_power_strategy(
-                        asset.voting_power_strategy.clone(),
-                        delegation.delegate,
-                        asset,
-                    ) / delegation.ratio)
-                        + acc
-                })
+            )
+            .await;
 
-            // assert_eq!(asset.chain_id, destination_chain_id.chain_id());
-        })
-        .sum::<U256>();
+        if delegations_result.is_err() {
+            println!("Delegations given are not correct");
+            assert!(false);
+        }
+
+        let delegations = delegations_result.unwrap();
+        let mut asset_voting_power = U256::from(0);
+
+        for delegation in &delegations {
+            let strategy = asset.voting_power_strategy.clone();
+            let delegate = delegation.delegate;
+            let ratio = delegation.ratio;
+
+            // Call the async function and await the result
+            let voting_power = strategies_context
+                .process_voting_power_strategy(strategy, delegate, asset)
+                .await;
+
+            asset_voting_power += voting_power / ratio;
+        }
+        total_voting_power += asset_voting_power;
+    }
 
     println!("Total voting power: {}", total_voting_power);
-    // Prepare the function call
-    /*
-        let call = IERC20::balanceOfCall {
-            account: args.voter,
-        };
-
-        // Preflight the call to execute the function in the guest.
-        let mut contract = Contract::preflight(args.token, &mut env);
-        let returns = contract.call_builder(&call).call()?;
-        println!(
-            "For block {} calling `{}` on {} returns: {}",
-            env.header().number(),
-            IERC20::balanceOfCall::SIGNATURE,
-            args.token,
-            returns._0
-        );
-    */
-
     println!("proving...");
 
-    let view_call_input = env.into_input()?;
-    let env = ExecutorEnv::builder()
-        .write(&view_call_input)?
-        .write(&args.voter_signature)?
-        .write(&args.voter)?
-        .write(&args.dao_address)?
-        .write(&args.proposal_id)?
-        .write(&args.direction)?
-        .write(&args.balance)?
-        .write(&args.config_contract)?
-        .write(&args.additional_delegation_data)?
-        .build()?;
+    let view_call_input = env.into_input().await?;
+    let prove_info = task::spawn_blocking(move || -> Result<ProveInfo, anyhow::Error> {
+        let env = ExecutorEnv::builder()
+            .write(&view_call_input)?
+            .write(&args.voter_signature)?
+            .write(&args.voter)?
+            .write(&args.dao_address)?
+            .write(&args.proposal_id)?
+            .write(&args.direction)?
+            .write(&args.balance)?
+            .write(&args.config_contract)?
+            .write(&args.additional_delegation_data)?
+            .build()?;
 
-    let receipt = default_prover()
-        .prove_with_ctx(
+        default_prover().prove_with_ctx(
             env,
             &VerifierContext::default(),
             VOTING_PROTOCOL_ELF,
             &ProverOpts::groth16(),
-        )?
-        .receipt;
+        )
+    })
+    .await?
+    .context("failed to create proof")?;
     println!("proving...done");
 
-    // Create a new `TxSender`.
-    let tx_sender = TxSender::new(
-        args.chain_id,
-        &args.rpc_url,
-        &args.eth_wallet_private_key,
-        &args.config_contract.to_string(),
-    )?;
-
     // Encode the groth16 seal with the selector
-    let seal = encode(receipt.inner.groth16()?.seal.clone())?;
-    let journal_bytes = receipt.journal.bytes.as_slice();
+    let receipt = prove_info.receipt;
+    let journal = &receipt.journal.bytes;
+
+    // Decode and log the commitment
+    let journal = VotingJournal::abi_decode(journal, true).context("invalid journal")?;
+
+    // ABI encode the seal.
+    let seal = encode_seal(&receipt).context("invalid receipt")?;
     let seal_bytes = seal.as_slice();
 
-    println!("journalData: {:?}", to_hex_string(journal_bytes));
+    // println!("journalData: {:?}", to_hex_string(journal));
     println!("seal: {:?}", to_hex_string(seal_bytes));
+    println!("Steel commitment: {:?}", journal.commitment);
 
-    // Encode the function call for `Plugin.vote(journal, seal)`.
-    let calldata = IMajorityVoting::voteCall {
-        journalData: receipt.journal.bytes.into(),
-        seal: seal.into(),
-    }
-    .abi_encode();
+    let contract = IMajorityVoting::new(args.config_contract, &provider);
+    let call_builder = contract.vote(receipt.journal.bytes.into(), seal.into());
+    println!("Send {} {}", contract.address(), call_builder.calldata());
+    log::debug!("Send {} {}", contract.address(), call_builder.calldata());
+    let pending_tx = call_builder.send().await?;
+    let tx_hash = *pending_tx.tx_hash();
+    let receipt = pending_tx
+        .get_receipt()
+        .await
+        .with_context(|| format!("transaction did not confirm: {}", tx_hash))?;
 
-    // Send the calldata to Ethereum.
-    println!("sending tx...");
+    ensure!(receipt.status(), "transaction failed: {}", tx_hash);
 
-    let runtime = tokio::runtime::Runtime::new()?;
-    runtime.block_on(tx_sender.send(calldata))?;
     println!("sending tx...done");
 
     Ok(())

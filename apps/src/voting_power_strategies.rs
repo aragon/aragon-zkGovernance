@@ -1,13 +1,22 @@
-use crate::{Asset, HostEvmEnv};
+use crate::{Asset, EthHostEvmEnv};
+use alloy::{network::Network, providers::Provider, transports::Transport};
 use alloy_primitives::{Address, U256};
-use risc0_steel::host::provider::Provider;
+use async_trait::async_trait;
 
-pub trait VotingPowerStrategy<P, H>
+#[async_trait]
+pub trait VotingPowerStrategy<T, N, P, H>
 where
-    P: Provider,
-    H: risc0_steel::EvmBlockHeader,
+    T: Transport + Clone,
+    N: Network,
+    P: Provider<T, N> + Send + 'static,
+    H: Send + 'static,
 {
-    fn process(&self, env: &mut HostEvmEnv<P, H>, account: Address, asset: &Asset) -> U256;
+    async fn process(
+        &self,
+        env: &mut EthHostEvmEnv<T, N, P, H>,
+        account: Address,
+        asset: &Asset,
+    ) -> U256;
 }
 
 mod balance_of;

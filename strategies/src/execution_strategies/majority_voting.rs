@@ -1,15 +1,11 @@
+use crate::GuestEvmEnv;
+
 use super::ProtocolExecutionStrategy;
 use alloy_primitives::U256;
-use risc0_steel::EvmEnv;
 
 pub struct MajorityVoting;
 impl ProtocolExecutionStrategy for MajorityVoting {
-    fn proof_execution(
-        &self,
-        _env: &EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader>,
-        total_supply: U256,
-        tally: [U256; 3],
-    ) -> bool {
+    fn proof_execution(&self, _env: &GuestEvmEnv, total_supply: U256, tally: [U256; 3]) -> bool {
         // TODO: The parameters for the minimum partticipation and so on should be flexible
         let yes_votes = tally[0];
         let no_votes = tally[1];

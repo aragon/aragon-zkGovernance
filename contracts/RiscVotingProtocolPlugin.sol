@@ -11,7 +11,7 @@ import {IMembership} from "@aragon/osx/core/plugin/membership/IMembership.sol";
 import {IDAO} from "@aragon/osx/core/dao/IDAO.sol";
 
 import {IRiscZeroVerifier} from "risc0/IRiscZeroVerifier.sol";
-import {Steel} from "risc0/steel/Steel.sol";
+import {Steel, Encoding} from "risc0/steel/Steel.sol";
 import {ImageID} from "./ImageID.sol"; // auto-generated contract after running `cargo build`.
 
 /// @title Counter
@@ -144,13 +144,15 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
         Proposal storage proposal_ = proposals[journal.proposalId];
 
         require(
-            journal.commitment.blockHash ==
-                proposal_.parameters.snapshotBlockHash,
+            journal.commitment.digest == proposal_.parameters.snapshotBlockHash,
             "Invalid commitment"
         );
+
+        (uint240 claimID, uint16 _version) = Encoding.decodeVersionedID(
+            journal.commitment.id
+        );
         require(
-            journal.commitment.blockNumber ==
-                proposal_.parameters.snapshotBlock,
+            claimID == proposal_.parameters.snapshotBlock,
             "Invalid commitment"
         );
 
@@ -242,13 +244,15 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
             revert ProposalExecutionForbidden(_proposalId);
         }
         require(
-            executionJournal.commitment.blockHash ==
+            executionJournal.commitment.digest ==
                 proposal_.parameters.snapshotBlockHash,
             "Invalid commitment"
         );
+        (uint240 claimID, uint16 _version) = Encoding.decodeVersionedID(
+            executionJournal.commitment.id
+        );
         require(
-            executionJournal.commitment.blockNumber ==
-                proposal_.parameters.snapshotBlock,
+            claimID == proposal_.parameters.snapshotBlock,
             "Invalid commitment"
         );
 

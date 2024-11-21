@@ -20,7 +20,7 @@
 pragma solidity ^0.8.9;
 
 library ControlID {
-    bytes32 public constant CONTROL_ROOT = hex"a516a057c9fbf5629106300934d48e0e775d4230e41e503347cad96fcbde7e2e";
-    // NOTE: This has opposite byte order to the value in the risc0 repository.
-    bytes32 public constant BN254_CONTROL_ID = hex"0eb6febcf06c5df079111be116f79bd8c7e85dc9448776ef9a59aaf2624ab551";
+    bytes32 public constant CONTROL_ROOT = hex"8b6dcf11d463ac455361b41fb3ed053febb817491bdea00fdb340e45013b852e";
+    // NOTE: This has the opposite byte order to the value in the risc0 repository.
+    bytes32 public constant BN254_CONTROL_ID = hex"05a022e1db38457fb510bc347b30eb8f8cf3eda95587653d0eac19e1f10d164e";
 }

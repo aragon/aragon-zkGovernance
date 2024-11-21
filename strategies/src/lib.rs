@@ -6,7 +6,7 @@ use alloy_primitives::{Address, Bytes, U256};
 use anyhow::{bail, Result};
 use delegation_strategies::*;
 use execution_strategies::*;
-use risc0_steel::{EvmEnv, SolCommitment};
+use risc0_steel::{Commitment, EvmEnv};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use voting_strategies::*;
@@ -15,11 +15,14 @@ pub struct Context {
     voting_power_strategies: HashMap<String, Box<dyn VotingPowerStrategy>>,
     delegation_strategies: HashMap<String, Box<dyn DelegationStrategy>>,
     execution_strategies: HashMap<String, Box<dyn ProtocolExecutionStrategy>>,
-    env: EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader>,
+    env: EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader, Commitment>,
 }
 
+pub(crate) type GuestEvmEnv =
+    EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader, Commitment>;
+
 impl Context {
-    pub fn new(env: EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader>) -> Self {
+    pub fn new(env: GuestEvmEnv) -> Self {
         Self {
             voting_power_strategies: HashMap::new(),
             delegation_strategies: HashMap::new(),
@@ -28,9 +31,7 @@ impl Context {
         }
     }
 
-    pub fn default(
-        env: EvmEnv<risc0_steel::StateDb, risc0_steel::ethereum::EthBlockHeader>,
-    ) -> Self {
+    pub fn default(env: GuestEvmEnv) -> Self {
         let mut voting_power_strategies: HashMap<String, Box<dyn VotingPowerStrategy>> =
             HashMap::new();
         voting_power_strategies.insert("BalanceOf".to_string(), Box::new(BalanceOf));
@@ -101,8 +102,9 @@ impl Context {
         }
     }
 
-    pub fn block_commitment(&self) -> SolCommitment {
-        self.env.block_commitment()
+    pub fn block_commitment(&self) -> Commitment {
+        let commitment = self.env.commitment();
+        commitment.clone()
     }
 }
 

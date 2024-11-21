@@ -30,6 +30,12 @@ import {Strings2} from "./utils/Strings2.sol";
 abstract contract RiscZeroCheats is CommonBase {
     using Strings2 for bytes;
 
+    /// @dev Journal and Seal struct used to decode the journal and seal from the `risc0-forge-ffi` `prove` command.
+    struct JournalSeal {
+        bytes journal;
+        bytes seal;
+    }
+
     /// @notice Returns whether we are using the prover and verifier in dev-mode, or fully verifying.
     /// @dev This environment variable, along with the respective options in the zkVM, are controlled
     ///      with the `RISC0_DEV_MODE` environment variable.
@@ -37,7 +43,7 @@ abstract contract RiscZeroCheats is CommonBase {
         return vm.envOr("RISC0_DEV_MODE", false);
     }
 
-    /// @notice Returns the journal, and Groth16 seal, resulting from running the
+    /// @notice Returns the journal, and seal, resulting from running the
     ///     guest with elf_path using input on the RISC Zero zkVM.
     /// @dev Based on whether `devMode()` is `true`, will take one of two actions:
     ///     * When `devMode()` is `true`
@@ -47,11 +53,15 @@ abstract contract RiscZeroCheats is CommonBase {
     ///       Uses the local prover or the Bonsai proving service to run the guest and produce an on-chain verifiable
     ///       SNARK attesting to the correctness of the journal output. URL and API key for Bonsai
     ///       should be specified using the BONSAI_API_URL and BONSAI_API_KEY environment variables.
-    function prove(string memory elf_path, bytes memory input) internal returns (bytes memory, bytes memory) {
-        string[] memory imageRunnerInput = new string[](10);
+    function prove(string memory elf_path, bytes memory input)
+        internal
+        returns (bytes memory journal, bytes memory seal)
+    {
+        string[] memory imageRunnerInput = new string[](11);
         uint256 i = 0;
         imageRunnerInput[i++] = "cargo";
         imageRunnerInput[i++] = "run";
+        imageRunnerInput[i++] = "--locked";
         imageRunnerInput[i++] = "--manifest-path";
         imageRunnerInput[i++] = "lib/risc0-ethereum/ffi/Cargo.toml";
         imageRunnerInput[i++] = "--bin";
@@ -60,7 +70,8 @@ abstract contract RiscZeroCheats is CommonBase {
         imageRunnerInput[i++] = "prove";
         imageRunnerInput[i++] = elf_path;
         imageRunnerInput[i++] = input.toHexString();
-        return abi.decode(vm.ffi(imageRunnerInput), (bytes, bytes));
+        JournalSeal memory journalSeal = abi.decode(vm.ffi(imageRunnerInput), (JournalSeal));
+        return (journalSeal.journal, journalSeal.seal);
     }
 
     /// @notice Deploy either a test or fully verifying `RiscZeroGroth16Verifier` depending on `devMode()`.
@@ -68,7 +79,7 @@ abstract contract RiscZeroCheats is CommonBase {
         if (devMode()) {
             // NOTE: Using a fixed selector of 0 for the selector of the mock verifier.
             IRiscZeroVerifier verifier = new RiscZeroMockVerifier(bytes4(0));
-            console2.log("Deployed RiscZeroGroth16VerifierTest to", address(verifier));
+            console2.log("Deployed RiscZeroMockVerifier to", address(verifier));
             return verifier;
         } else {
             IRiscZeroVerifier verifier = new RiscZeroGroth16Verifier(ControlID.CONTROL_ROOT, ControlID.BN254_CONTROL_ID);

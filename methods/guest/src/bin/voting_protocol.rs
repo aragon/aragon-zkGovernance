@@ -6,7 +6,10 @@ use std::str::FromStr;
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::{sol, SolValue};
 use hex::FromHex;
-use risc0_steel::{config::ETH_SEPOLIA_CHAIN_SPEC, ethereum::EthEvmInput, Contract, SolCommitment};
+use risc0_steel::{
+    ethereum::{EthEvmInput, ETH_SEPOLIA_CHAIN_SPEC},
+    Commitment, Contract,
+};
 use risc0_zkvm::guest::env;
 
 use k256::{
@@ -29,7 +32,7 @@ sol! {
 /// ABI encodable journal data.
 sol! {
     struct Journal {
-        SolCommitment commitment;
+        Commitment commitment;
         address config_contract;
         uint256 proposal_id;
         address voter;

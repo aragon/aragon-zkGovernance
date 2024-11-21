@@ -4,9 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-alloy-primitives = { version = "0.7" }
-alloy-sol-types = { version = "0.7" }
-risc0-steel = { git = "https://github.com/risc0/risc0-ethereum", tag = "v1.0.0" }
+alloy-primitives = { workspace = true }
+alloy-sol-types = { workspace = true }
+risc0-steel = { git = "https://github.com/risc0/risc0-ethereum", tag = "v1.1.4" }
 serde_json = "1.0.125"
 serde = "1.0.208"
 anyhow = { workspace = true }

@@ -1,10 +1,12 @@
 use super::DelegationStrategy;
 use crate::Delegation;
-use crate::{Asset, HostEvmEnv};
+use crate::{Asset, EthHostEvmEnv};
+use alloy::{network::Network, providers::Provider, transports::Transport};
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::sol;
 use anyhow::{bail, Result};
-use risc0_steel::{host::provider::Provider, Contract, EvmBlockHeader};
+use async_trait::async_trait;
+use risc0_steel::Contract;
 
 sol! {
     /// ERC-20 balance function signature.
@@ -19,14 +21,17 @@ sol! {
 
 pub struct SplitDelegation;
 
-impl<P, H> DelegationStrategy<P, H> for SplitDelegation
+#[async_trait]
+impl<T, N, P, H> DelegationStrategy<T, N, P, H> for SplitDelegation
 where
-    P: Provider,
-    H: EvmBlockHeader,
+    T: Transport + Clone + Send + Sync,
+    N: Network + Send + Sync,
+    P: Provider<T, N> + Send + Sync + 'static,
+    H: Clone + Send + Sync + 'static,
 {
-    fn process(
+    async fn process(
         &self,
-        env: &mut HostEvmEnv<P, H>,
+        env: &mut EthHostEvmEnv<T, N, P, H>, // Mutable reference passed
         account: Address,
         asset: &Asset,
         additional_data: Bytes,
@@ -43,61 +48,90 @@ where
             .collect();
         println!("Input Delegations: {:?}", delegations);
 
-        // Confirm the delegations are valid and get each ratio
-        let context = asset.contract;
-        let mut delegations_contract = Contract::preflight(asset.delegation.contract, env);
-        let account_delegates: Vec<Option<Delegation>> = delegations
-            .iter()
-            .map(|potential_delegate| {
-                let potential_delegate_delegations_call = DelegateRegistry::getDelegationCall {
-                    context: context.to_string(),
-                    account: *potential_delegate,
-                };
-                let potential_delegate_delegations = delegations_contract
-                    .call_builder(&potential_delegate_delegations_call)
-                    .call()
-                    .unwrap();
-                println!(
-                    "Potential Delegate Delegations: {:?}, {:?}",
-                    potential_delegate_delegations.delegations[0].delegate,
-                    potential_delegate_delegations.delegations[0].ratio
-                );
+        let context = asset.contract.clone();
+        let mut account_delegates = Vec::new();
 
-                if potential_delegate_delegations.delegations.is_empty() {
-                    return Some(Delegation {
-                        delegate: *potential_delegate,
-                        ratio: U256::from(1),
-                    });
-                }
+        for potential_delegate in delegations {
+            let context_clone = context.to_string();
+            let asset_contract_clone = asset.delegation.contract.clone();
+            let result = process_delegate(
+                env,
+                asset_contract_clone,
+                context_clone,
+                potential_delegate,
+                account,
+            )
+            .await;
 
-                // Find the matching delegation for the account and return a Some(Delegation) if valid
-                let total_ratios = potential_delegate_delegations
-                    .delegations
-                    .iter()
-                    .fold(U256::from(0), |acc, d| acc + d.ratio);
-                println!("Total Ratios: {:?}", total_ratios);
-                println!(
-                    "1st Delegate Ratio: {:?}",
-                    total_ratios / potential_delegate_delegations.delegations[0].ratio
-                );
+            account_delegates.push(result);
+        }
 
-                potential_delegate_delegations
-                    .delegations
-                    .iter()
-                    .find(|d| compare_bytes32_to_address(d.delegate, account))
-                    .map(|d| Delegation {
-                        delegate: *potential_delegate,
-                        ratio: total_ratios / d.ratio,
-                    })
-            })
-            .collect();
-
+        // Check if any results are `None`
         if account_delegates.iter().any(|d| d.is_none()) {
             bail!("One or more delegations are invalid");
         } else {
             Ok(account_delegates.into_iter().map(|d| d.unwrap()).collect())
         }
     }
+}
+
+// Extract the async logic into a separate function
+async fn process_delegate<T, N, P, H>(
+    env: &mut EthHostEvmEnv<T, N, P, H>,
+    asset_contract: Address,
+    context: String,
+    potential_delegate: Address,
+    account: Address,
+) -> Option<Delegation>
+where
+    T: Transport + Clone + Send + Sync,
+    N: Network + Send + Sync,
+    P: Provider<T, N> + Send + Sync + 'static,
+    H: Clone + Send + Sync + 'static,
+{
+    // Create the delegations contract
+    let mut delegations_contract = Contract::preflight(asset_contract, env);
+
+    // Build the call
+    let potential_delegate_delegations_call = DelegateRegistry::getDelegationCall {
+        context,
+        account: potential_delegate,
+    };
+
+    // Await the call result
+    let potential_delegate_delegations = delegations_contract
+        .call_builder(&potential_delegate_delegations_call)
+        .call()
+        .await
+        .unwrap();
+
+    println!(
+        "Potential Delegate Delegations: {:?}, {:?}",
+        potential_delegate_delegations.delegations[0].delegate,
+        potential_delegate_delegations.delegations[0].ratio
+    );
+
+    if potential_delegate_delegations.delegations.is_empty() {
+        return Some(Delegation {
+            delegate: potential_delegate,
+            ratio: U256::from(1),
+        });
+    }
+
+    // Find the matching delegation for the account and return a Some(Delegation) if valid
+    let total_ratios = potential_delegate_delegations
+        .delegations
+        .iter()
+        .fold(U256::from(0), |acc, d| acc + d.ratio);
+
+    potential_delegate_delegations
+        .delegations
+        .iter()
+        .find(|d| compare_bytes32_to_address(d.delegate, account))
+        .map(|d| Delegation {
+            delegate: potential_delegate,
+            ratio: total_ratios / d.ratio,
+        })
 }
 
 fn compare_bytes32_to_address(bytes32: alloy_primitives::FixedBytes<32>, address: Address) -> bool {
