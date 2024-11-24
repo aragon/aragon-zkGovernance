@@ -1,36 +1,20 @@
-# RISC Zero View Call Proofs ERC20-Counter Example
+# zkVoting: Aragon OSx Plugin for RISC Zero's zkVM proofs verification
 
-This example implements a counter that increments based on off-chain RISC Zero [Steel] proofs submitted to the [Counter] contract.
-The contract interacts with ERC-20 tokens, using [Steel] proofs to verify that an account holds at least 1 token before incrementing the counter.
+This Aragon OSx plugin introduces a zk proof verification system that redefines how voting, delegation, and execution are managed in DAOs. Powered by RISC Zero’s zkVM, the system enables off-chain proof generation and on-chain verification, ensuring secure, scalable, and gas-efficient governance.
 
-## Overview
+The plugin includes two main components:
+	1.	OSx Plugin Contracts – Integrate seamlessly into Aragon’s governance framework.
+	2.	zkVM Proof Programs – Designed as a flexible voting protocol, these programs allow DAOs to define custom voting, delegation, and execution strategies.
 
-The [Counter] contract is designed to interact with the Ethereum blockchain, leveraging the power of RISC Zero [Steel] proofs to perform a specific operation: incrementing a counter based on the token holdings of an account.
+When installing the plugin, DAOs configure their governance rules and strategies through a JSON string. This allows them to manage multiple assets, each with unique delegation mechanisms tailored to their needs.
 
-### Contract Functionality
+Unique Features:
 
-#### Increment Counter
+	•	Token Flexibility: Enables tracking balances and delegation for tokens that don’t support ERC20Votes, unlocking new asset compatibility for governance.
+	•	Gas Efficiency: Acts as an additional execution layer to reduce gas costs for high-demand governance contracts.
+	•	Customizable Strategies: Build bespoke governance processes, from voting to execution, directly within the zk proof framework.
 
-The core functionality of the [Counter] contract is to increment an internal counter whenever a valid proof was submitted.
-This proof must demonstrate that a specified account holds at least one unit of a particular ERC-20 token.
-The contract ensures that the counter is only incremented when the proof is verified and the condition of holding at least one token is met.
-
-#### Steel Proof Submission
-
-Users or entities can submit proofs to the [Counter] contract.
-These proofs are generated off-chain using the RISC Zero zkVM.
-The proof encapsulates the verification of an account's token balance without exposing the account's details or requiring direct on-chain queries.
-
-#### Token Balance Verification
-
-Upon receiving a [Steel] proof, the [Counter] contract decodes the proof and validates it against the contract's state at a certain block height.
-This ensures that the account in question actually holds at least one token at the time the proof was generated.
-
-#### Counter Management
-
-The contract maintains an internal counter, which is publicly viewable.
-This counter represents the number of successful verifications that have occurred.
-The contract includes functionality to query the current value of the counter at any time.
+With multichain support planned for future updates, this plugin equips DAOs with a powerful, future-proof governance solution that combines flexibility, security, and efficiency.
 
 ## Dependencies
 
@@ -67,17 +51,27 @@ export BONSAI_API_KEY="YOUR_API_KEY" # see form linked above
 export BONSAI_API_URL="BONSAI_URL" # provided with your api key
 ```
 
-## Deploy Your Application
+## Deploy Your Plugin
 
-When you're ready, follow the [deployment guide] to get your application running on [Sepolia] or a local network.
+First you'll need to compile a release version:
 
-[Foundry]: https://getfoundry.sh/
-[Groth16 SNARK proof]: https://www.risczero.com/news/on-chain-verification
-[RISC Zero installation]: https://dev.risczero.com/api/zkvm/install
-[RISC Zero]: https://www.risczero.com/
-[Sepolia]: https://www.alchemy.com/overviews/sepolia-testnet
-[cargo-binstall]: https://github.com/cargo-bins/cargo-binstall#cargo-binaryinstall
-[deployment guide]: ./deployment-guide.md
-[install Rust]: https://doc.rust-lang.org/cargo/getting-started/installation.html
-[Counter]: ./contracts/Counter.sol
-[Steel]: https://www.risczero.com/blog/introducing-steel
+```bash
+cargo build --release --bin publisher
+```
+
+Then, there'll be some scaffolding on the proving programs and the contracts. Due to a current limitation, the contracts generated can't be used directly.
+The reason is solidity uncompatibility of versions.
+
+Go to the files:
+- contracts/ImageID.sol
+- contgract/Elf.sol
+
+And change their solidity versions to: `pragma solidity ^0.8.17;`. That is, change in both contracts the version from solidity 20 to 17.
+
+After that, you'll now be able to deploy the contracts:
+```bash
+export ETH_WALLET_PRIVATE_KEY=<<YOUR_TESTING_PK>>
+forge script --rpc-url  https://eth-sepolia.g.alchemy.com/v2/<<YOUR_ALCHEMY_KEY>> script/DeployCounter.s.sol:Deploy --broadcast --verify --etherscan-api-key  <YOUR_ETHERSCAN_KEY>
+```
+
+Once you've done that, you'll have a DAO deployed with the OSx Plugin.
