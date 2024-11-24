@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_sol_types::{sol, SolValue};
+// use anyhow::Result;
 use hex::FromHex;
 use risc0_steel::{
     ethereum::{EthEvmInput, ETH_SEPOLIA_CHAIN_SPEC},
@@ -17,6 +18,7 @@ use k256::{
     elliptic_curve::sec1::ToEncodedPoint,
     PublicKey,
 };
+use strategies::delegation_strategies::Delegation;
 use tiny_keccak::{Hasher, Keccak};
 
 risc0_zkvm::guest::entry!(main);
@@ -162,15 +164,19 @@ fn main() {
         .iter()
         .map(|asset| {
             // Get the accounts whost voting power is delegated to the voter.
-            let delegations = strategies_context.process_delegation_strategy(
-                voter,
-                asset,
-                Bytes::from_str(additional_delegation_data.as_str()).unwrap(),
-            );
-            if delegations.is_err() {
-                println!("Delegations given are not correct");
-                assert!(false);
-            }
+            let delegations = if asset.delegation.is_none() {
+                Ok(vec![Delegation {
+                    delegate: voter,
+                    ratio: U256::from(1),
+                }])
+            } else {
+                strategies_context.process_delegation_strategy(
+                    voter,
+                    asset,
+                    Bytes::from_str(additional_delegation_data.as_str()).unwrap(),
+                )
+            };
+
             delegations
                 .unwrap()
                 .iter()

@@ -42,10 +42,18 @@ impl DelegationStrategy for SplitDelegation {
 
         // Confirm the delegations are valid and get each ratio
         let context = asset.contract;
-        let delegations_contract = Contract::new(asset.delegation.contract, env);
+        let delegation = asset
+            .delegation
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Delegation strategy not found"))?;
+
+        let delegations_contract = Contract::new(delegation.contract, env);
+
+        // Delegations provided may be used for different assets in the strategy, if a delegation is not found, it is just not counted
         let account_delegates: Vec<Option<Delegation>> = delegations
             .iter()
             .map(|potential_delegate| {
+                // Get the delegations for the potential delegate
                 let potential_delegate_delegations_call = DelegateRegistry::getDelegationCall {
                     context: context.to_string(),
                     account: *potential_delegate,
@@ -54,19 +62,26 @@ impl DelegationStrategy for SplitDelegation {
                     .call_builder(&potential_delegate_delegations_call)
                     .call();
 
-                if potential_delegate_delegations.delegations.is_empty() {
-                    return Some(Delegation {
-                        delegate: *potential_delegate,
-                        ratio: U256::from(1),
-                    });
+                // If delegate hasn't delegated, and it's the user account, it counts as self-delegation
+                if potential_delegate_delegations.delegations.is_empty()
+                    || potential_delegate_delegations.delegations.is_empty()
+                    || U256::from(env.header().timestamp)
+                        < potential_delegate_delegations.expirationTimestamp
+                {
+                    if *potential_delegate == account {
+                        return Some(Delegation {
+                            delegate: *potential_delegate,
+                            ratio: U256::from(1),
+                        });
+                    } else {
+                        return None;
+                    }
                 }
 
                 let total_ratios = potential_delegate_delegations
                     .delegations
                     .iter()
                     .fold(U256::from(0), |acc, d| acc + d.ratio);
-
-                // if potential_delegate_delegations.expirationTimestamp >= Uint::<256, 4>::from(env.header().timestamp())
 
                 // Find the matching delegation for the account and return a Some(Delegation) if valid
                 potential_delegate_delegations
@@ -78,13 +93,10 @@ impl DelegationStrategy for SplitDelegation {
                         ratio: total_ratios / d.ratio,
                     })
             })
+            .filter(|d| d.is_some())
             .collect();
 
-        if account_delegates.iter().any(|d| d.is_none()) {
-            bail!("One or more delegations are invalid");
-        } else {
-            Ok(account_delegates.into_iter().map(|d| d.unwrap()).collect())
-        }
+        Ok(account_delegates.into_iter().map(|d| d.unwrap()).collect())
     }
 }
 

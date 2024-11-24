@@ -95,16 +95,21 @@ where
         asset: &Asset,
         additional_data: Bytes,
     ) -> Result<Vec<Delegation>> {
-        if let Some(delegation_strategy) = self
+        // This function is always required to have a delegation strategy
+        let delegation = asset
+            .delegation
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Delegation strategy not found"))?;
+
+        // If there's a delegation strategy provided, it has to be in the list or it will error
+        let delegation_strategy = self
             .delegation_strategies
-            .get(asset.delegation.strategy.as_str())
-        {
-            delegation_strategy
-                .process(&mut self.env, account, asset, additional_data)
-                .await
-        } else {
-            panic!("Strategy not found: {}", asset.delegation.strategy);
-        }
+            .get(&delegation.strategy)
+            .ok_or_else(|| anyhow::anyhow!("Strategy not found: {}", delegation.strategy))?;
+
+        delegation_strategy
+            .process(&mut self.env, account, asset, additional_data)
+            .await
     }
 }
 
@@ -122,7 +127,7 @@ pub struct Asset {
     pub contract: alloy_primitives::Address,
     pub chain_id: u64,
     pub voting_power_strategy: String,
-    pub delegation: DelegationObject,
+    pub delegation: Option<DelegationObject>,
 }
 
 #[derive(Serialize, Deserialize)]

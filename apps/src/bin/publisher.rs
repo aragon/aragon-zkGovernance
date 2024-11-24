@@ -6,7 +6,7 @@ use alloy::{
 };
 use alloy_primitives::{Address, Bytes, U256};
 use anyhow::{ensure, Context, Result};
-use apps::HostContext;
+use apps::{delegation_strategies::Delegation, HostContext};
 use aragon_zk_voting_protocol_methods::VOTING_PROTOCOL_ELF;
 use clap::Parser;
 use risc0_ethereum_contracts::encode_seal;
@@ -149,20 +149,24 @@ async fn main() -> Result<()> {
     let mut total_voting_power = U256::from(0);
 
     for asset in &config.assets {
-        let delegations_result = strategies_context
-            .process_delegation_strategy(
-                args.voter,
-                asset,
-                Bytes::from_str(args.additional_delegation_data.as_str()).unwrap(),
-            )
-            .await;
+        // And asset may or may not have a delegation strategy
 
-        if delegations_result.is_err() {
-            println!("Delegations given are not correct");
-            assert!(false);
-        }
+        // This checks the delegations given by the voter
+        let delegations = if asset.delegation.is_none() {
+            vec![Delegation {
+                delegate: args.voter,
+                ratio: U256::from(1),
+            }]
+        } else {
+            strategies_context
+                .process_delegation_strategy(
+                    args.voter,
+                    asset,
+                    Bytes::from_str(args.additional_delegation_data.as_str()).unwrap(),
+                )
+                .await?
+        };
 
-        let delegations = delegations_result.unwrap();
         let mut asset_voting_power = U256::from(0);
 
         for delegation in &delegations {

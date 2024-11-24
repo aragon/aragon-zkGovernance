@@ -50,14 +50,16 @@ where
 
         let context = asset.contract.clone();
         let mut account_delegates = Vec::new();
+        let delegation = asset
+            .delegation
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Delegation strategy not found"))?;
 
         for potential_delegate in delegations {
-            let context_clone = context.to_string();
-            let asset_contract_clone = asset.delegation.contract.clone();
             let result = process_delegate(
                 env,
-                asset_contract_clone,
-                context_clone,
+                delegation.contract.clone(),
+                context.to_string(),
                 potential_delegate,
                 account,
             )
@@ -66,12 +68,11 @@ where
             account_delegates.push(result);
         }
 
-        // Check if any results are `None`
-        if account_delegates.iter().any(|d| d.is_none()) {
-            bail!("One or more delegations are invalid");
-        } else {
-            Ok(account_delegates.into_iter().map(|d| d.unwrap()).collect())
-        }
+        Ok(account_delegates
+            .into_iter()
+            .filter(|d| d.is_some())
+            .map(|d| d.unwrap())
+            .collect())
     }
 }
 
@@ -111,11 +112,19 @@ where
         potential_delegate_delegations.delegations[0].ratio
     );
 
-    if potential_delegate_delegations.delegations.is_empty() {
-        return Some(Delegation {
-            delegate: potential_delegate,
-            ratio: U256::from(1),
-        });
+    // If delegate hasn't delegated, and it's the user account, it counts as self-delegation
+    if potential_delegate_delegations.delegations.is_empty()
+        || potential_delegate_delegations.delegations.is_empty()
+        || U256::from(env.header().timestamp) < potential_delegate_delegations.expirationTimestamp
+    {
+        if potential_delegate == account {
+            return Some(Delegation {
+                delegate: potential_delegate,
+                ratio: U256::from(1),
+            });
+        } else {
+            return None;
+        }
     }
 
     // Find the matching delegation for the account and return a Some(Delegation) if valid

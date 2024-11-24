@@ -3,7 +3,7 @@ pub mod execution_strategies;
 pub mod voting_strategies;
 
 use alloy_primitives::{Address, Bytes, U256};
-use anyhow::{bail, Result};
+use anyhow::Result;
 use delegation_strategies::*;
 use execution_strategies::*;
 use risc0_steel::{Commitment, EvmEnv};
@@ -79,14 +79,17 @@ impl Context {
         asset: &Asset,
         additional_data: Bytes,
     ) -> Result<Vec<Delegation>> {
-        if let Some(delegation_strategy) = self
+        let delegation = asset
+            .delegation
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Delegation strategy not found"))?;
+
+        let delegation_strategy = self
             .delegation_strategies
-            .get(asset.delegation.strategy.as_str())
-        {
-            delegation_strategy.process(&self.env, account, asset, additional_data)
-        } else {
-            bail!("Strategy not found: {}", asset.delegation.strategy);
-        }
+            .get(&delegation.strategy)
+            .ok_or_else(|| anyhow::anyhow!("Strategy not found: {}", delegation.strategy))?;
+
+        delegation_strategy.process(&self.env, account, asset, additional_data)
     }
 
     pub fn process_execution_strategy(
@@ -121,7 +124,7 @@ pub struct Asset {
     pub contract: Address,
     pub chain_id: u64,
     pub voting_power_strategy: String,
-    pub delegation: DelegationObject,
+    pub delegation: Option<DelegationObject>,
 }
 
 #[derive(Serialize, Deserialize)]
