@@ -1,0 +1,23 @@
+[package]
+name = "tests"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+alloy = { version = "0.3.1", features = [
+  "full",
+  "node-bindings",
+  "network",
+  "providers",
+  "transports",
+  "signer-local",
+  "rpc-types",
+] }
+alloy-contract = "0.3.1"
+alloy-sol-types = { version = "0.8.2", features = ["json"] }
+tokio = { version = "1.38.0", features = ["rt", "macros", "fs"] }
+rand = "0.8.5"
+
+[dev-dependencies]
+reqwest = "0.12.4"
