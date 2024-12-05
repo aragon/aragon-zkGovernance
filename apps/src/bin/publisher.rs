@@ -97,6 +97,10 @@ struct Args {
     /// Additional delegation data
     #[clap(long)]
     additional_delegation_data: String,
+
+    // If proving should be disabled
+    #[clap(long)]
+    testing: u8,
 }
 
 fn to_hex_string(bytes: &[u8]) -> String {
@@ -181,7 +185,12 @@ async fn main() -> Result<()> {
     }
 
     println!("Total voting power: {}", total_voting_power);
+    assert!(total_voting_power == args.balance);
     println!("proving...");
+
+    if args.testing == 1 {
+        return Ok(());
+    }
 
     let view_call_input = env.into_input().await?;
     let prove_info = task::spawn_blocking(move || -> Result<ProveInfo, anyhow::Error> {

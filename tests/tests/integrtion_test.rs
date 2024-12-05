@@ -1,4 +1,7 @@
+use std::str::FromStr;
+
 use alloy::{
+    hex,
     network::{Ethereum, EthereumWallet},
     node_bindings::{Anvil, AnvilInstance},
     primitives::{address, bytes, keccak256, Address, U256},
@@ -9,6 +12,8 @@ use alloy::{
 use alloy_sol_types::{sol, SolValue};
 use anyhow::Result;
 use rand::Rng;
+use std::process::Command;
+use tests::get_user_vote_signature;
 
 sol!(
     #[sol(rpc)]
@@ -236,7 +241,7 @@ async fn dao_setup(
 #[tokio::test]
 async fn test_config_is_setup() -> Result<()> {
     println!("Setting up test environment");
-    let (_anvil, provider, verifier) = setup_test_environment().await?;
+    let (anvil, provider, verifier) = setup_test_environment().await?;
     let (plugin_setup, plugin_repo, plugin, dao) = dao_setup(&provider, verifier).await?;
 
     println!();
@@ -256,6 +261,69 @@ async fn test_config_is_setup() -> Result<()> {
         .await?
         .get_receipt()
         .await?;
+
+    let signer: PrivateKeySigner = anvil.keys()[0].clone().into();
+
+    // let balance = U256::from_str("100000000000000000").expect("Failed to parse balance");
+    let balance = U256::from_str("0").expect("Failed to parse balance");
+
+    let signed_vote = hex::encode(
+        get_user_vote_signature(11155111, signer.clone(), dao, U256::from(2), 0, balance)
+            .await?
+            .as_bytes(),
+    );
+
+    let voter = EthereumWallet::from(signer).default_signer().address();
+    let token = address!("185Bb1cca668C474214e934028A3e4BB7A5E6525");
+    // let additional_delegation_data = "8bF1e340055c7dE62F11229A149d3A1918de3d74";
+    let additional_delegation_data = "";
+
+    println!("Running publisher");
+
+    let output = Command::new("cargo")
+        .current_dir("../")
+        .env("BONSAI_API_KEY", std::env::var("BONSAI_API_KEY").unwrap())
+        .env("BONSAI_API_URL", std::env::var("BONSAI_API_URL").unwrap())
+        .env("RPC_URL", std::env::var("RPC_URL").unwrap())
+        .env(
+            "ETH_WALLET_PRIVATE_KEY",
+            std::env::var("ETH_WALLET_PRIVATE_KEY").unwrap(),
+        )
+        .env("PRIVATE_KEY", std::env::var("PRIVATE_KEY").unwrap())
+        .arg("run")
+        .arg("--bin")
+        .arg("publisher")
+        .arg("--")
+        .arg(format!(
+            "--chain-id={}",
+            std::env::var("CHAIN_ID").unwrap_or_else(|_| "11155111".to_string())
+        ))
+        .arg(format!("--rpc-url={}", anvil.endpoint()))
+        .arg(format!(
+            "--block-number={}",
+            provider.get_block_number().await?
+        ))
+        .arg(format!("--voter-signature={:?}", signed_vote))
+        .arg(format!("--voter={}", voter))
+        .arg(format!("--dao-address={}", dao))
+        .arg(format!("--proposal-id={}", 0))
+        .arg(format!("--direction={}", 2))
+        .arg(format!("--balance={}", balance))
+        .arg(format!("--config-contract={}", plugin))
+        .arg(format!("--token={}", token))
+        .arg(format!("--testing={}", 1))
+        .arg(format!(
+            "--additional-delegation-data={}",
+            additional_delegation_data
+        ))
+        .output()
+        .expect("failed to execute process");
+
+    println!("Execution done");
+    let message_out = String::from_utf8_lossy(&output.stdout).to_string();
+    let message_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    println!("{}", message_out);
+    println!("{}", message_stderr);
 
     Ok(())
 }
