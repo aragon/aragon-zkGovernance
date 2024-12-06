@@ -82,3 +82,49 @@ If you want to test just the unit tests you can run the following:
 ```bash
 cargo test -p apps -- --nocapture
 ```
+
+
+## DAO Config String
+
+When deploying a DAO, you need to set the governance settings for the plugin. These settings include the assets that will make up the census, the delegation mechanisms, and the execution strategy. This configuration is stored as a JSON string in the contract when being deployed.
+
+The format of this JSON string is as follows:
+```json
+{
+  "votingProtocolVersion": "string",
+  "assets": [
+    {
+      "contract": "address",
+      "chainId": "number",
+      "votingPowerStrategy": "string",
+      "delegation": {
+        "contract": "address",
+        "strategy": "string"
+      }
+    }
+  ],
+  "executionStrategy": "string"
+}
+```
+
+### Example
+
+Here is an example of a DAO Config String:
+
+```json
+{
+  "votingProtocolVersion": "1.0",
+  "assets": [
+    {
+      "contract": "0x1234567890abcdef1234567890abcdef12345678",
+      "chainId": 1,
+      "votingPowerStrategy": "BalanceOf",
+      "delegation": {
+        "contract": "0xabcdefabcdefabcdefabcdefabcdefabcdef",
+        "strategy": "SplitDelegation"
+      }
+    }
+  ],
+  "executionStrategy": "MajorityVoting"
+}
+```
