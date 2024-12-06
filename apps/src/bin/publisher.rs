@@ -130,6 +130,7 @@ async fn main() -> Result<()> {
     // Define the type for H
     let mut env = EthEvmEnv::builder()
         .rpc(Url::from_str(&args.rpc_url).unwrap())
+        // .beacon_api(Url::from_str(&args.rpc_url).unwrap())
         // .provider(provider.clone())
         .block_number(args.block_number.unwrap())
         .build()

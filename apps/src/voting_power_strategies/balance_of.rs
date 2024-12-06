@@ -40,3 +40,43 @@ where
         U256::from(balance._0)
     }
 }
+
+// Unit tests module
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use std::str::FromStr;
+
+    use alloy::transports::http::reqwest::Url;
+    use alloy_primitives::address;
+    use risc0_steel::ethereum::{EthEvmEnv, ETH_SEPOLIA_CHAIN_SPEC};
+
+    use crate::DelegationObject;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_process() -> Result<()> {
+        let mut env = EthEvmEnv::builder()
+            .rpc(Url::from_str(&std::env::var("RPC_URL").unwrap()).unwrap())
+            .build()
+            .await
+            .unwrap();
+        env = env.with_chain_spec(&ETH_SEPOLIA_CHAIN_SPEC);
+
+        let account = address!("8bF1e340055c7dE62F11229A149d3A1918de3d74");
+        let asset: Asset = Asset {
+            contract: address!("185Bb1cca668C474214e934028A3e4BB7A5E6525"),
+            chain_id: ETH_SEPOLIA_CHAIN_SPEC.chain_id(),
+            voting_power_strategy: "BalanceOf".to_string(),
+            delegation: DelegationObject {
+                contract: address!("185Bb1cca668C474214e934028A3e4BB7A5E6525"),
+                strategy: "SplitDelegation".to_string(),
+            },
+        };
+        let balance_strategy = BalanceOf;
+        let balance = balance_strategy.process(&mut env, account, &asset).await;
+        assert_eq!(balance, U256::from_str("900000000000000000").unwrap());
+        Ok(())
+    }
+}
