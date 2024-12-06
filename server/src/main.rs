@@ -54,7 +54,6 @@ async fn root(Json(payload): Json<VotingParams>) -> (StatusCode, Json<VotingResp
             "ETH_WALLET_PRIVATE_KEY",
             std::env::var("ETH_WALLET_PRIVATE_KEY").unwrap(),
         )
-        .env("PRIVATE_KEY", std::env::var("PRIVATE_KEY").unwrap())
         .arg(format!(
             "--chain-id={}",
             std::env::var("CHAIN_ID").unwrap_or_else(|_| "11155111".to_string())

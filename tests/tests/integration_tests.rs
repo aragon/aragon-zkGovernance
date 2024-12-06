@@ -289,7 +289,6 @@ async fn test_config_is_setup() -> Result<()> {
             "ETH_WALLET_PRIVATE_KEY",
             std::env::var("ETH_WALLET_PRIVATE_KEY").unwrap(),
         )
-        .env("PRIVATE_KEY", std::env::var("PRIVATE_KEY").unwrap())
         .arg("run")
         .arg("--bin")
         .arg("publisher")

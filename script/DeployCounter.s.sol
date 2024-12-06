@@ -61,7 +61,7 @@ contract Deploy is Script {
 
     function run() external {
         // 0. Setting up Foundry
-        vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
+        vm.startBroadcast(vm.envUint("ETH_WALLET_PRIVATE_KEY"));
 
         // 1. Deploying the Plugin Setup
         RiscVotingProtocolPluginSetup pluginSetup = deployPluginSetup();
