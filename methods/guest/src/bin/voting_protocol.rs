@@ -25,7 +25,7 @@ risc0_zkvm::guest::entry!(main);
 /// This parses the Solidity syntax to generate a struct that implements the `SolCall` trait.
 sol! {
     interface ConfigContract {
-        function getVotingProtocolConfig() external view returns (string memory);
+        function votingProtocolConfig(uint256 proposal_id) external view returns (string memory);
     }
 }
 
@@ -145,7 +145,7 @@ fn main() {
     let destination_chain_id = &ETH_SEPOLIA_CHAIN_SPEC;
     let env = input.into_env().with_chain_spec(destination_chain_id);
 
-    let config_call = ConfigContract::getVotingProtocolConfigCall {};
+    let config_call = ConfigContract::votingProtocolConfigCall { proposal_id };
     let config_returns = Contract::new(config_contract, &env)
         .call_builder(&config_call)
         .call();

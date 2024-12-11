@@ -23,6 +23,7 @@ import {MajorityVotingBase} from "../contracts/MajorityVotingBase.sol";
 import {RiscVotingProtocolPlugin} from "../contracts/RiscVotingProtocolPlugin.sol";
 import {RiscVotingProtocolPluginSetup} from "../contracts/RiscVotingProtocolPluginSetup.sol";
 import {ERC20} from "../contracts/ERC20.sol";
+import {ImageID} from "../contracts/ImageID.sol"; // auto-generated contract after running `cargo build`.
 
 import {Script, console2} from "forge-std/Script.sol";
 import {Vm} from "forge-std/Test.sol";
@@ -146,6 +147,11 @@ contract Deploy is Script {
         // TODO: Get the members from a json file
         address[] memory members = new address[](1);
         members[0] = address(msg.sender);
+
+        IRiscZeroVerifier verifier = IRiscZeroVerifier(
+            0x925d8331ddc0a1F0d96E68CF073DFE1d92b69187
+        );
+
         MajorityVotingBase.VotingSettings
             memory votingSettings = MajorityVotingBase.VotingSettings({
                 votingMode: MajorityVotingBase.VotingMode.Standard,
@@ -153,17 +159,13 @@ contract Deploy is Script {
                 minParticipation: 10,
                 minDuration: 0.1 days,
                 minProposerVotingPower: 1,
-                votingProtocolConfig: votingProtocolConfig
+                votingProtocolConfig: votingProtocolConfig,
+                verifier: address(verifier),
+                votingProtocolImageId: ImageID.VOTING_PROTOCOL_ID,
+                executionProtocolImageId: ImageID.EXECUTION_PROTOCOL_ID
             });
 
-        IRiscZeroVerifier verifier = IRiscZeroVerifier(
-            0x925d8331ddc0a1F0d96E68CF073DFE1d92b69187
-        );
-        bytes memory pluginSettingsData = abi.encode(
-            votingSettings,
-            token,
-            verifier
-        );
+        bytes memory pluginSettingsData = abi.encode(votingSettings);
 
         PluginRepo.Tag memory tag = PluginRepo.Tag(1, 1);
         pluginSettings = new DAOFactory.PluginSettings[](1);

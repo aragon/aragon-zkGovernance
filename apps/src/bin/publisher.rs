@@ -25,7 +25,7 @@ alloy::sol! {
         function balanceOf(address account) external view returns (uint);
     }
     interface ConfigContract {
-        function getVotingProtocolConfig() external view returns (string memory);
+        function votingProtocolConfig(uint256 proposal_id) external view returns (string memory);
     }
     struct VotingJournal {
         Commitment commitment;
@@ -140,7 +140,9 @@ async fn main() -> Result<()> {
     env = env.with_chain_spec(&ETH_SEPOLIA_CHAIN_SPEC);
 
     // Making the preflighs. This step is mandatory
-    let config_call = ConfigContract::getVotingProtocolConfigCall {};
+    let config_call = ConfigContract::votingProtocolConfigCall {
+        proposal_id: args.proposal_id,
+    };
     let mut config_contract = Contract::preflight(args.config_contract, &mut env);
     let config_returns = config_contract.call_builder(&config_call).call().await?;
     println!("Config string: {:?}", config_returns._0);

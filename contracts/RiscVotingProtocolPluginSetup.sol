@@ -75,44 +75,26 @@ contract RiscVotingProtocolPluginSetup is PluginSetup {
     {
         // Decode `_data` to extract the params needed for deploying and initializing `TokenVoting` plugin,
         // and the required helpers
-        (
-            MajorityVotingBase.VotingSettings memory votingSettings,
-            address token,
-            IRiscZeroVerifier verifier
-        ) = abi.decode(
-                _data,
-                (MajorityVotingBase.VotingSettings, address, IRiscZeroVerifier)
-            );
-
-        bool tokenAddressNotZero = token != address(0);
+        MajorityVotingBase.VotingSettings memory votingSettings = abi.decode(
+            _data,
+            (MajorityVotingBase.VotingSettings)
+        );
 
         // Prepare helpers.
-        address[] memory helpers = new address[](1);
-
-        if (tokenAddressNotZero) {
-            if (!_isContract(token)) {
-                revert TokenNotContract(token);
-            }
-
-            if (!_isERC20(token)) {
-                revert TokenNotERC20(token);
-            }
-        }
-
-        helpers[0] = token;
+        address[] memory helpers = new address[](0);
 
         // Prepare and deploy plugin proxy.
         plugin = createERC1967Proxy(
             address(votingProtocolBase),
             abi.encodeCall(
                 RiscVotingProtocolPlugin.initialize,
-                (IDAO(_dao), votingSettings, verifier, IERC20Upgradeable(token))
+                (IDAO(_dao), votingSettings)
             )
         );
 
         // Prepare permissions
         PermissionLib.MultiTargetPermission[]
-            memory permissions = new PermissionLib.MultiTargetPermission[](2);
+            memory permissions = new PermissionLib.MultiTargetPermission[](3);
 
         // Set plugin permissions to be granted.
         // Grant the list of permissions of the plugin to the DAO.
@@ -132,6 +114,15 @@ contract RiscVotingProtocolPluginSetup is PluginSetup {
             who: plugin,
             condition: PermissionLib.NO_CONDITION,
             permissionId: EXECUTE_PERMISSION_ID
+        });
+
+        // Grant `CREATE_PROPOSAL_PERMISSION` of the plugin to the creator.
+        permissions[2] = PermissionLib.MultiTargetPermission({
+            operation: PermissionLib.Operation.Grant,
+            where: plugin,
+            who: tx.origin,
+            condition: PermissionLib.NO_CONDITION,
+            permissionId: votingProtocolBase.CREATE_PROPOSAL_PERMISSION_ID()
         });
 
         preparedSetupData.helpers = helpers;

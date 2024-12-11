@@ -262,6 +262,8 @@ async fn test_config_is_setup() -> Result<()> {
         .get_receipt()
         .await?;
 
+    println!("Proposal created: 0");
+
     let signer: PrivateKeySigner = anvil.keys()[0].clone().into();
 
     // let balance = U256::from_str("100000000000000000").expect("Failed to parse balance");

@@ -158,6 +158,9 @@ abstract contract MajorityVotingBase is
         uint64 minDuration;
         uint256 minProposerVotingPower;
         string votingProtocolConfig;
+        address verifier;
+        bytes32 votingProtocolImageId;
+        bytes32 executionProtocolImageId;
     }
 
     /// @notice A container for proposal-related information.
@@ -192,6 +195,10 @@ abstract contract MajorityVotingBase is
         uint64 endDate;
         uint64 snapshotBlock;
         bytes32 snapshotBlockHash;
+        string votingProtocolConfig;
+        address verifier;
+        bytes32 votingProtocolImageId;
+        bytes32 executionProtocolImageId;
     }
 
     /// @notice A container for the proposal vote tally.
@@ -216,6 +223,10 @@ abstract contract MajorityVotingBase is
     /// @notice The ID of the permission required to call the `updateVotingSettings` function.
     bytes32 public constant UPDATE_VOTING_SETTINGS_PERMISSION_ID =
         keccak256("UPDATE_VOTING_SETTINGS_PERMISSION");
+
+    /// @notice The ID of the permission required to call the `createProposal` functions.
+    bytes32 public constant CREATE_PROPOSAL_PERMISSION_ID =
+        keccak256("CREATE_PROPOSAL_PERMISSION");
 
     /// @notice A mapping between proposal IDs and proposal information.
     // solhint-disable-next-line named-parameters-mapping
@@ -365,10 +376,38 @@ abstract contract MajorityVotingBase is
         return votingSettings.votingMode;
     }
 
+    /// @notice Returns the verifier address stored in the voting settings.
+    /// @return The verifier address.
+    function verifier() public view virtual returns (address) {
+        return votingSettings.verifier;
+    }
+
+    /// @notice Returns the voting protocol image ID stored in the voting settings.
+    /// @return The voting protocol image ID.
+    function votingProtocolImageId() public view virtual returns (bytes32) {
+        return votingSettings.votingProtocolImageId;
+    }
+
+    /// @notice Returns the execution protocol image ID stored in the voting settings.
+    /// @return The execution protocol image ID.
+    function executionProtocolImageId() public view virtual returns (bytes32) {
+        return votingSettings.executionProtocolImageId;
+    }
+
     /// @notice getter function for config of the voting protocol.
     /// @return The string of the config.
-    function getVotingProtocolConfig() public view returns (string memory) {
+    function votingProtocolConfig() public view returns (string memory) {
         return votingSettings.votingProtocolConfig;
+    }
+
+    /// @notice getter function for config of the voting protocol of a specific proposal.
+    /// @param _proposalId The ID of the proposal.
+    /// @return The string of the config.
+    function votingProtocolConfig(
+        uint256 _proposalId
+    ) public view returns (string memory) {
+        Proposal storage proposal_ = proposals[_proposalId];
+        return proposal_.parameters.votingProtocolConfig;
     }
 
     /// @notice Returns all information for a proposal vote by its ID.

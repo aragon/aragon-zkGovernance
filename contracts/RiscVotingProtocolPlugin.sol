@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 pragma solidity ^0.8.17;
 
@@ -20,16 +20,6 @@ import {ImageID} from "./ImageID.sol"; // auto-generated contract after running 
 /// before incrementing the counter. This contract leverages RISC0-zkVM for generating and verifying these proofs.
 contract RiscVotingProtocolPlugin is MajorityVotingBase {
     using SafeCastUpgradeable for uint256;
-
-    /// @notice Image ID of the only zkVM binary to accept verification from.
-    bytes32 public constant votingProtocolImageId = ImageID.VOTING_PROTOCOL_ID;
-    bytes32 public constant executionProtocolImageId =
-        ImageID.EXECUTION_PROTOCOL_ID;
-
-    /// @notice RISC Zero verifier contract address.
-    IRiscZeroVerifier public verifier;
-
-    IERC20Upgradeable public votingToken;
 
     /// @notice Journal that is committed to by the guest.
     struct VotingJournal {
@@ -55,13 +45,11 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
 
     function initialize(
         IDAO _dao,
-        VotingSettings calldata _votingSettings,
-        IRiscZeroVerifier _verifier,
-        IERC20Upgradeable _token
+        VotingSettings calldata _votingSettings
     ) external initializer {
-        verifier = _verifier;
+        // _votingSettings.votingProtocolImageId = ImageID.VOTING_PROTOCOL_ID;
+        // _votingSettings.executionProtocolImageId = ImageID.EXECUTION_PROTOCOL_ID;
         __MajorityVotingBase_init(_dao, _votingSettings);
-        votingToken = _token;
     }
 
     /// @inheritdoc MajorityVotingBase
@@ -71,24 +59,12 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
         uint256 _allowFailureMap,
         uint64 _startDate,
         uint64 _endDate
-    ) external override returns (uint256 proposalId) {
-        // Check that either `_msgSender` owns enough tokens or has enough voting power from being a delegatee.
-        {
-            uint256 minProposerVotingPower_ = minProposerVotingPower();
-
-            if (minProposerVotingPower_ != 0) {
-                // Because of the checks in `TokenVotingSetup`, we can assume that `votingToken`
-                // is an [ERC-20](https://eips.ethereum.org/EIPS/eip-20) token.
-                if (
-                    IERC20Upgradeable(address(votingToken)).balanceOf(
-                        _msgSender()
-                    ) < minProposerVotingPower_
-                ) {
-                    revert ProposalCreationForbidden(_msgSender());
-                }
-            }
-        }
-
+    )
+        external
+        override
+        auth(CREATE_PROPOSAL_PERMISSION_ID)
+        returns (uint256 proposalId)
+    {
         uint256 snapshotBlock;
         unchecked {
             // The snapshot block must be mined already to
@@ -116,6 +92,12 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
         proposal_.parameters.votingMode = votingMode();
         proposal_.parameters.supportThreshold = supportThreshold();
         proposal_.parameters.snapshotBlockHash = blockhash(snapshotBlock);
+        proposal_.parameters.votingProtocolConfig = votingProtocolConfig();
+        proposal_.parameters.verifier = verifier();
+        proposal_.parameters.votingProtocolImageId = votingProtocolImageId();
+        proposal_
+            .parameters
+            .executionProtocolImageId = executionProtocolImageId();
 
         // Reduce costs
         if (_allowFailureMap != 0) {
@@ -158,7 +140,11 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
 
         // Verify the proof
         bytes32 journalHash = sha256(journalData);
-        verifier.verify(seal, votingProtocolImageId, journalHash);
+        IRiscZeroVerifier(proposal_.parameters.verifier).verify(
+            seal,
+            proposal_.parameters.votingProtocolImageId,
+            journalHash
+        );
 
         // The actual vote
         // This could re-enter, though we can assume the governance token is not malicious
@@ -258,7 +244,11 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
 
         // Verify the proof
         bytes32 journalHash = sha256(journalData);
-        verifier.verify(seal, executionProtocolImageId, journalHash);
+        IRiscZeroVerifier(proposal_.parameters.verifier).verify(
+            seal,
+            proposal_.parameters.executionProtocolImageId,
+            journalHash
+        );
 
         _execute(_proposalId);
     }
