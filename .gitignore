@@ -24,3 +24,6 @@ target/
 # Misc
 .DS_Store
 .idea
+/target
+.shuttle*
+Secrets*.toml
