@@ -59,12 +59,10 @@ fn main() {
     let total_voting_power = config
         .assets
         .iter()
-        .map(|asset| {
-            strategies_context.process_total_supply(asset.voting_power_strategy.clone(), asset)
-        })
+        .map(|asset| strategies_context.process_total_supply(asset))
         .sum::<U256>();
 
-    println!("Total voting power: {}", total_voting_power);
+    println!("Proposal total voting power: {}", total_voting_power);
 
     // General settings constraints
     assert!(strategies_context.process_execution_strategy(

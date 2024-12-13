@@ -16,11 +16,13 @@
 // transactions to a deployed app contract on Ethereum.
 
 pub mod delegation_strategies;
+pub mod execution_strategies;
 pub mod voting_power_strategies;
 use alloy::{network::Network, providers::Provider, transports::Transport};
-use alloy_primitives::Bytes;
-use anyhow::Result;
+use alloy_primitives::{Bytes, U256};
+use anyhow::{bail, Result};
 use delegation_strategies::*;
+use execution_strategies::*;
 use risc0_steel::{
     ethereum::EthEvmEnv,
     host::{
@@ -46,6 +48,7 @@ where
 {
     voting_power_strategies: HashMap<String, Box<dyn VotingPowerStrategy<T, N, P, H>>>,
     delegation_strategies: HashMap<String, Box<dyn DelegationStrategy<T, N, P, H>>>,
+    execution_strategies: HashMap<String, Box<dyn ExecutionStrategy<T, N, P, H>>>,
     env: &'a mut EthHostEvmEnv<T, N, P, H>,
 }
 
@@ -67,9 +70,14 @@ where
             HashMap::new();
         delegation_strategies.insert("SplitDelegation".to_string(), Box::new(SplitDelegation));
 
+        let mut execution_strategies: HashMap<String, Box<dyn ExecutionStrategy<T, N, P, H>>> =
+            HashMap::new();
+        execution_strategies.insert("MajorityVoting".to_string(), Box::new(MajorityVoting));
+
         Self {
             voting_power_strategies,
             delegation_strategies,
+            execution_strategies,
             env,
         }
     }
@@ -104,6 +112,32 @@ where
                 .await
         } else {
             panic!("Strategy not found: {}", asset.delegation.strategy);
+        }
+    }
+
+    pub async fn process_total_supply(&mut self, asset: &Asset) -> Result<U256> {
+        if let Some(voting_strategy) = self
+            .voting_power_strategies
+            .get(&asset.voting_power_strategy)
+        {
+            Ok(voting_strategy.get_supply(&mut self.env, asset).await)
+        } else {
+            bail!("Strategy not found: {}", &asset.voting_power_strategy);
+        }
+    }
+
+    pub async fn process_execution_strategy(
+        &mut self,
+        name: String,
+        total_supply: U256,
+        tally: [U256; 3],
+    ) -> Result<bool> {
+        if let Some(execution_strategy) = self.execution_strategies.get(&name) {
+            Ok(execution_strategy
+                .proof_execution(&mut self.env, total_supply, tally)
+                .await)
+        } else {
+            bail!("Strategy not found: {}", name);
         }
     }
 }

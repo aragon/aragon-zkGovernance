@@ -17,6 +17,8 @@ where
         account: Address,
         asset: &Asset,
     ) -> U256;
+
+    async fn get_supply(&self, env: &mut EthHostEvmEnv<T, N, P, H>, asset: &Asset) -> U256;
 }
 
 mod balance_of;

@@ -10,7 +10,7 @@ sol! {
     /// ERC-20 balance function signature.
     interface IERC20Votes {
         function getPastVotes(address account, uint256 timepoint) public view returns (uint256);
-        function getPastTotalSupply(uint256 timepoint) external view returns (uint);
+        function getPastTotalSupply(uint256 timepoint) external view returns (uint256);
     }
 }
 
@@ -43,6 +43,20 @@ where
             .await
             .unwrap();
         U256::from(past_votes._0)
+    }
+
+    async fn get_supply(&self, env: &mut EthHostEvmEnv<T, N, P, H>, asset: &Asset) -> U256 {
+        let block_number = env.header().parent_num_hash().number;
+        let mut asset_contract = Contract::preflight(asset.contract, env);
+        let supply_call = IERC20Votes::getPastTotalSupplyCall {
+            timepoint: U256::from(block_number),
+        };
+        let supply = asset_contract
+            .call_builder(&supply_call)
+            .call()
+            .await
+            .unwrap();
+        U256::from(supply._0)
     }
 }
 

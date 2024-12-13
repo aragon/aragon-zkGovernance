@@ -39,6 +39,17 @@ where
             .unwrap();
         U256::from(balance._0)
     }
+
+    async fn get_supply(&self, env: &mut EthHostEvmEnv<T, N, P, H>, asset: &Asset) -> U256 {
+        let mut asset_contract = Contract::preflight(asset.contract, env);
+        let supply_call = IERC20::getTotalSupplyCall {};
+        let supply = asset_contract
+            .call_builder(&supply_call)
+            .call()
+            .await
+            .unwrap();
+        U256::from(supply._0)
+    }
 }
 
 // Unit tests module

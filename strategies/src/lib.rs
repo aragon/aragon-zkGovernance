@@ -65,11 +65,11 @@ impl Context {
         }
     }
 
-    pub fn process_total_supply(&self, name: String, asset: &Asset) -> U256 {
-        if let Some(protocol_strategy) = self.voting_power_strategies.get(&name) {
+    pub fn process_total_supply(&self, asset: &Asset) -> U256 {
+        if let Some(protocol_strategy) = self.voting_power_strategies.get(&asset.voting_power_strategy) {
             protocol_strategy.get_supply(&self.env, asset)
         } else {
-            panic!("Strategy not found: {}", name);
+            panic!("Strategy not found: {}", &asset.voting_power_strategy);
         }
     }
 
