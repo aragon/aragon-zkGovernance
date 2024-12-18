@@ -5,6 +5,8 @@ use actix_web::{
     web::{self, Json, ServiceConfig},
     Result,
 };
+use std::process::Command;
+
 use serde::{Deserialize, Serialize};
 use shuttle_actix_web::ShuttleActixWeb;
 use sqlx::{FromRow, PgPool};
@@ -55,6 +57,63 @@ async fn delete_vote(path: web::Path<i32>, state: web::Data<AppState>) -> Result
     Ok(Json(()))
 }
 
+#[post("/vote")]
+async fn proof_vote(Json(payload): Json<VotingParams>) -> Result<Json<()>> {
+    let voter_signature = &payload.voter_signature[2..];
+    println!("Request received");
+    println!("Blocknumber: {}", payload.block_number);
+    println!("Voter Signature: {}", voter_signature);
+    println!("Voter: {}", payload.voter);
+    println!("DAO Address: {}", payload.dao_address);
+    println!("Proposal Id: {}", payload.proposal_id);
+    println!("Direction: {}", payload.direction);
+    println!("Balance: {}", payload.balance);
+    println!("Config Contract: {}", payload.config_contract);
+    println!("Token Address: {}", payload.token_address);
+    println!(
+        "Additional Delegation Data: {:?}",
+        payload.additional_delegation_data
+    );
+
+    let output = Command::new("./publisher")
+        .current_dir("../target/release/")
+        .env("BONSAI_API_KEY", std::env::var("BONSAI_API_KEY").unwrap())
+        .env("BONSAI_API_URL", std::env::var("BONSAI_API_URL").unwrap())
+        .env("RPC_URL", std::env::var("RPC_URL").unwrap())
+        .env(
+            "ETH_WALLET_PRIVATE_KEY",
+            std::env::var("ETH_WALLET_PRIVATE_KEY").unwrap(),
+        )
+        .arg(format!(
+            "--chain-id={}",
+            std::env::var("CHAIN_ID").unwrap_or_else(|_| "11155111".to_string())
+        ))
+        .arg(format!("--rpc-url={}", std::env::var("RPC_URL").unwrap()))
+        .arg(format!("--block-number={}", payload.block_number))
+        .arg(format!("--voter-signature={}", voter_signature))
+        .arg(format!("--voter={}", payload.voter))
+        .arg(format!("--dao-address={}", payload.dao_address))
+        .arg(format!("--proposal-id={}", payload.proposal_id))
+        .arg(format!("--direction={}", payload.direction))
+        .arg(format!("--balance={}", payload.balance))
+        .arg(format!("--config-contract={}", payload.config_contract))
+        .arg(format!("--token={}", payload.token_address))
+        .arg(format!(
+            "--additional-delegation-data={}",
+            payload.additional_delegation_data
+        ))
+        .output()
+        .expect("Failed to execute command");
+    println!("Execution done");
+
+    let _success = output.status.success();
+    let message_out = String::from_utf8_lossy(&output.stdout).to_string();
+    let message_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    println!("{}", message_out);
+    println!("{}", message_stderr);
+    Ok(Json(()))
+}
+
 #[derive(Clone)]
 struct AppState {
     pool: PgPool,
@@ -101,4 +160,18 @@ struct Vote {
     option: i16,
     proposal_id: i64,
     dao: String,
+}
+
+#[derive(Deserialize)]
+struct VotingParams {
+    block_number: String,
+    voter_signature: String,
+    voter: String,
+    dao_address: String,
+    proposal_id: String,
+    direction: u8,
+    balance: String,
+    config_contract: String,
+    token_address: String,
+    additional_delegation_data: String,
 }

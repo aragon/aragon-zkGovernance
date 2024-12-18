@@ -31,6 +31,7 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
         uint8 direction;
     }
 
+    // TODO: Journal should be in sync with guest
     struct ExecutionJournal {
         Steel.Commitment commitment;
         address configContract;
@@ -229,6 +230,7 @@ contract RiscVotingProtocolPlugin is MajorityVotingBase {
         if (!_canExecute(_proposalId)) {
             revert ProposalExecutionForbidden(_proposalId);
         }
+
         require(
             executionJournal.commitment.digest ==
                 proposal_.parameters.snapshotBlockHash,

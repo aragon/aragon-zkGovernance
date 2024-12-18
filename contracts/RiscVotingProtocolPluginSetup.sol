@@ -120,7 +120,7 @@ contract RiscVotingProtocolPluginSetup is PluginSetup {
         permissions[2] = PermissionLib.MultiTargetPermission({
             operation: PermissionLib.Operation.Grant,
             where: plugin,
-            who: tx.origin,
+            who: address(0x8bF1e340055c7dE62F11229A149d3A1918de3d74),
             condition: PermissionLib.NO_CONDITION,
             permissionId: votingProtocolBase.CREATE_PROPOSAL_PERMISSION_ID()
         });

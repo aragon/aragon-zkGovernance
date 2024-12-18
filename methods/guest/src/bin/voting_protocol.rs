@@ -126,6 +126,7 @@ fn main() {
     let config_contract: Address = env::read();
     let additional_delegation_data: String = env::read();
 
+    // 1. Start the signature verification process
     let digest = hash_vote(
         ETH_SEPOLIA_CHAIN_SPEC.chain_id(),
         dao,

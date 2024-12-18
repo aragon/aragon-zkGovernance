@@ -22,6 +22,8 @@ alloy::sol! {
     interface ConfigContract {
         function votingProtocolConfig(uint256 proposal_id) external view returns (string memory);
     }
+
+    // TODO: Journal should be in sync with guest
     struct VotingJournal {
         Commitment commitment;
         address configContract;
