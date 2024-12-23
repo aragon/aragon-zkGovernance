@@ -1,5 +1,7 @@
+use actix_cors::Cors;
 use actix_web::{
     delete, error, get,
+    http::header,
     middleware::Logger,
     post,
     web::{self, Json, ServiceConfig},
@@ -76,7 +78,8 @@ async fn proof_vote(Json(payload): Json<VotingParams>) -> Result<Json<()>> {
     );
 
     let output = Command::new("./publisher")
-        .current_dir("../target/release/")
+        // .current_dir("../target/release/")
+        .current_dir("./target/release/")
         .env("BONSAI_API_KEY", std::env::var("BONSAI_API_KEY").unwrap())
         .env("BONSAI_API_URL", std::env::var("BONSAI_API_URL").unwrap())
         .env("RPC_URL", std::env::var("RPC_URL").unwrap())
@@ -102,6 +105,7 @@ async fn proof_vote(Json(payload): Json<VotingParams>) -> Result<Json<()>> {
             "--additional-delegation-data={}",
             payload.additional_delegation_data
         ))
+        .arg(format!("--testing={}", 0))
         .output()
         .expect("Failed to execute command");
     println!("Execution done");
@@ -133,11 +137,13 @@ async fn main(
     let config = move |cfg: &mut ServiceConfig| {
         cfg.service(
             web::scope("/votes")
+                .wrap(Cors::permissive())
                 .wrap(Logger::default())
                 .service(retrieve_all_votes)
                 .service(retrieve_vote)
                 .service(add_vote)
                 .service(delete_vote)
+                .service(proof_vote)
                 .app_data(state),
         );
     };
